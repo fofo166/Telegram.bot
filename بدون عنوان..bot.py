@@ -1,31 +1,39 @@
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 import os
 from pytube import YouTube
 from instaloader import Instaloader, Post, Profile
 
 TOKEN = '7467852528:AAEQCI-cZjFk2QrtbDrv2fk91AwFLbiPIN0'
 
-def download_youtube_video(url, output_path='video.mp4'):
+def download_youtube_video(url, output_path='youtube/video.mp4'):
+    if not os.path.exists('youtube'):
+        os.makedirs('youtube')
     yt = YouTube(url)
     stream = yt.streams.get_highest_resolution()
     stream.download(output_path=output_path)
     return output_path
 
-def download_youtube_audio(url, output_path='audio.mp3'):
+def download_youtube_audio(url, output_path='youtube/audio.mp3'):
+    if not os.path.exists('youtube'):
+        os.makedirs('youtube')
     yt = YouTube(url)
     stream = yt.streams.filter(only_audio=True).first()
     stream.download(output_path=output_path)
     return output_path
 
 def download_instagram_media(url):
+    if not os.path.exists('instagram'):
+        os.makedirs('instagram')
     L = Instaloader()
-    shortcode = url.split("/p/")[1].split("/")[0]
+    shortcode = url.split("/p/")[1].split("/")[0].split("?")[0]
     post = Post.from_shortcode(L.context, shortcode)
     L.download_post(post, target='instagram')
     return f'instagram/{post.owner_username}_{post.shortcode}'
 
 def download_instagram_stories(username):
+    if not os.path.exists('instagram'):
+        os.makedirs('instagram')
     L = Instaloader()
     profile = Profile.from_username(L.context, username)
     for story in L.get_stories([profile.userid]):
@@ -47,8 +55,11 @@ def handle_message(update: Update, context: CallbackContext):
         if 'youtube.com' in url or 'youtu.be' in url:
             update.message.reply_text('جارٍ تنزيل الفيديو من يوتيوب...')
             video_path = download_youtube_video(url)
-            update.message.reply_video(video=open(video_path, 'rb'))
-            os.remove(video_path)
+            if os.path.exists(video_path):
+                update.message.reply_video(video=open(video_path, 'rb'))
+                os.remove(video_path)
+            else:
+                update.message.reply_text('لم أتمكن من تنزيل الفيديو.')
         elif 'instagram.com' in url:
             update.message.reply_text('جارٍ تنزيل المحتوى من إنستغرام...')
             media_path = download_instagram_media(url)
@@ -66,7 +77,8 @@ def handle_message(update: Update, context: CallbackContext):
         else:
             update.message.reply_text('الرابط غير مدعوم. يرجى إرسال رابط من يوتيوب أو إنستغرام.')
     except Exception as e:
-        update.message.reply_text(f'حدث خطأ: {e}')
+        update.message.reply_text(f'حدث خطأ: {str(e)}')
+        print(f"Error: {e}")
 
 def main():
     updater = Updater(TOKEN, use_context=True)
@@ -78,5 +90,14 @@ def main():
     updater.start_polling()
     updater.idle()
 
-if name == 'main':
+if __name__ == '__main__':
     main()
+except Exception as e:
+         update.message.reply_text(f'حدث خطأ: {str(e)}')
+         print(f"Error: {e}")  # طباعة الخطأ في الكونسول
+if not os.path.exists('instagram'):
+         os.makedirs('instagram')
+if not os.path.exists('youtube'):
+         os.makedirs('youtube')
+
+updater.start_polling()  # تصحيح: start_polling
