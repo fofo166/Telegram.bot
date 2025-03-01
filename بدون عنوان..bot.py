@@ -1,103 +1,86 @@
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
-import os
-from pytube import YouTube
-from instaloader import Instaloader, Post, Profile
-
-TOKEN = '7467852528:AAEQCI-cZjFk2QrtbDrv2fk91AwFLbiPIN0'
-
-def download_youtube_video(url, output_path='youtube/video.mp4'):
-    if not os.path.exists('youtube'):
-        os.makedirs('youtube')
-    yt = YouTube(url)
-    stream = yt.streams.get_highest_resolution()
-    stream.download(output_path=output_path)
-    return output_path
-
-def download_youtube_audio(url, output_path='youtube/audio.mp3'):
-    if not os.path.exists('youtube'):
-        os.makedirs('youtube')
-    yt = YouTube(url)
-    stream = yt.streams.filter(only_audio=True).first()
-    stream.download(output_path=output_path)
-    return output_path
-
-def download_instagram_media(url):
-    if not os.path.exists('instagram'):
-        os.makedirs('instagram')
-    L = Instaloader()
-    shortcode = url.split("/p/")[1].split("/")[0].split("?")[0]
-    post = Post.from_shortcode(L.context, shortcode)
-    L.download_post(post, target='instagram')
-    return f'instagram/{post.owner_username}_{post.shortcode}'
-
-def download_instagram_stories(username):
-    if not os.path.exists('instagram'):
-        os.makedirs('instagram')
-    L = Instaloader()
-    profile = Profile.from_username(L.context, username)
-    for story in L.get_stories([profile.userid]):
-        for item in story.get_items():
-            L.download_storyitem(item, target=f'instagram/{username}')
-
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text('مرحبًا! أرسل لي رابطًا من يوتيوب أو إنستغرام وسأحاول تنزيله لك.')
-
-def help(update: Update, context: CallbackContext):
-    update.message.reply_text('الأوامر المتاحة:\n/start - بدء البوت\n/help - عرض الأوامر')
-
-def about(update: Update, context: CallbackContext):
-    update.message.reply_text('أنا بوت لتنزيل المحتوى من يوتيوب وإنستغرام.')
-
-def handle_message(update: Update, context: CallbackContext):
-    url = update.message.text
-    try:
-        if 'youtube.com' in url or 'youtu.be' in url:
-            update.message.reply_text('جارٍ تنزيل الفيديو من يوتيوب...')
-            video_path = download_youtube_video(url)
-            if os.path.exists(video_path):
-                update.message.reply_video(video=open(video_path, 'rb'))
-                os.remove(video_path)
+post = instaloader.Post.from_shortcode(insta_loader.context, url.split("/")[-2])
+            if post.is_video:
+                insta_loader.download_post(post, target="instagram_media")
+                await update.message.reply_video(video=open(f"instagram_media/{post.shortcode}.mp4", 'rb'))
             else:
-                update.message.reply_text('لم أتمكن من تنزيل الفيديو.')
-        elif 'instagram.com' in url:
-            update.message.reply_text('جارٍ تنزيل المحتوى من إنستغرام...')
-            media_path = download_instagram_media(url)
-            if os.path.exists(media_path):
-                for file in os.listdir(media_path):
-                    if file.endswith('.mp4'):
-                        update.message.reply_video(video=open(os.path.join(media_path, file), 'rb'))
-                    elif file.endswith('.jpg'):
-                        update.message.reply_photo(photo=open(os.path.join(media_path, file), 'rb'))
-                for file in os.listdir(media_path):
-                    os.remove(os.path.join(media_path, file))
-                os.rmdir(media_path)
-            else:
-                update.message.reply_text('لم أتمكن من تنزيل المحتوى.')
+                insta_loader.download_post(post, target="instagram_media")
+                await update.message.reply_photo(photo=open(f"instagram_media/{post.shortcode}.jpg", 'rb'))
+            os.remove(f"instagram_media/{post.shortcode}.mp4" if post.is_video else f"instagram_media/{post.shortcode}.jpg")
+            await update.message.reply_text("تم تنزيل المحتوى بنجاح! 🎉")
+        except Exception as e:
+            await update.message.reply_text(f'حدث خطأ أثناء تنزيل المحتوى من Instagram: {e}')
+    else:
+        await update.message.reply_text(
+            f"عذرًا، يجب عليك الانضمام إلى القناة التالية لاستخدام البوت:\n\n{REQUIRED_CHANNEL}\n\n"
+            "بعد الانضمام، أرسل الرابط مرة أخرى."
+        )
+
+# دالة لتنزيل فيديو من Facebook
+async def download_facebook_video(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
+    user_id = update.message.from_user.id
+    if await is_user_member(user_id, context):
+        try:
+            await update.message.reply_text("جاري تنزيل الفيديو من Facebook... ⏳")
+            
+            # تهيئة yt-dlp
+            ydl_opts = {
+                'format': 'best',  # أفضل جودة متاحة
+                'outtmpl': 'facebook_media/%(title)s.%(ext)s',  # حفظ الملف في مجلد facebook_media
+            }
+
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                file_path = ydl.prepare_filename(info)
+
+            await update.message.reply_video(video=open(file_path, 'rb'))
+            os.remove(file_path)
+            await update.message.reply_text("تم تنزيل الفيديو بنجاح! 🎉")
+        except Exception as e:
+            await update.message.reply_text(f'حدث خطأ أثناء تنزيل الفيديو من Facebook: {e}')
+    else:
+        await update.message.reply_text(
+            f"عذرًا، يجب عليك الانضمام إلى القناة التالية لاستخدام البوت:\n\n{REQUIRED_CHANNEL}\n\n"
+            "بعد الانضمام، أرسل الرابط مرة أخرى."
+        )
+
+# دالة لمعالجة الرسائل النصية
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if await is_user_member(user_id, context):
+        text = update.message.text
+
+        # تحسين التعبيرات العادية
+        youtube_regex = r"(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/)[\w-]+"
+        instagram_regex = r"(https?://)?(www\.)?instagram\.com/(p|reel)/[\w-]+"
+        facebook_regex = r"(https?://)?(www\.)?facebook\.com/.+/videos/\d+"
+
+        if re.match(youtube_regex, text):
+            await download_youtube_video(update, context, text)
+        elif re.match(instagram_regex, text):
+            await download_instagram_media(update, context, text)
+        elif re.match(facebook_regex, text):
+            await download_facebook_video(update, context, text)
         else:
-            update.message.reply_text('الرابط غير مدعوم. يرجى إرسال رابط من يوتيوب أو إنستغرام.')
-    except Exception as e:
-        update.message.reply_text(f'حدث خطأ: {str(e)}')
-        print(f"Error: {e}")
+            await update.message.reply_text("الرابط غير مدعوم. أرسل رابط فيديو من YouTube أو Instagram أو Facebook.")
+    else:
+        await update.message.reply_text(
+            f"عذرًا، يجب عليك الانضمام إلى القناة التالية لاستخدام البوت:\n\n{REQUIRED_CHANNEL}\n\n"
+            "بعد الانضمام، أرسل الرابط مرة أخرى."
+        )
 
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("help", help))
-    dp.add_handler(CommandHandler("about", about))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-    updater.start_polling()
-    updater.idle()
+    # إنشاء تطبيق البوت
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-if __name__ == '__main__':
+    # تعريف الأوامر
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    
+    # معالجة الرسائل النصية
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    # بدء البوت
+    application.run_polling()
+
+if name == 'main':
     main()
-except Exception as e:
-         update.message.reply_text(f'حدث خطأ: {str(e)}')
-         print(f"Error: {e}")  # طباعة الخطأ في الكونسول
-if not os.path.exists('instagram'):
-         os.makedirs('instagram')
-if not os.path.exists('youtube'):
-         os.makedirs('youtube')
-
-updater.start_polling()  # تصحيح: start_polling
